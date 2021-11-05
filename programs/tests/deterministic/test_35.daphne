@@ -1,2 +1,0 @@
-(let [data (vector (vector 1 2 3) (vector 1 2 3)) ]
-  (+ (first data) (last data) ))

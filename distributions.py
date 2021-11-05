@@ -1,4 +1,5 @@
 import torch
+from torch._C import dtype
 import torch.distributions as dist
 
 class Normal(dist.Normal):
@@ -10,8 +11,7 @@ class Normal(dist.Normal):
         else:
             self.optim_scale = torch.log(torch.exp(scale) - 1).clone().detach().requires_grad_()
         
-        
-        super().__init__(loc, torch.nn.functional.softplus(self.optim_scale))
+        super().__init__(loc.type(torch.float), torch.nn.functional.softplus(self.optim_scale))
     
     def Parameters(self):
         """Return a list of parameters for the distribution"""
@@ -31,6 +31,34 @@ class Normal(dist.Normal):
         self.scale = torch.nn.functional.softplus(self.optim_scale)
         
         return super().log_prob(x)
+
+class UniformContinuous(dist.Gamma):
+    """Gamma approximation of Uniform"""
+
+    def __init__(self, lb, ub, copy=False):
+
+        if not copy:
+            # called from eval()
+            super().__init__(concentration=torch.tensor(float(2)), rate=ub.clone().detach())
+
+        else:
+            # called from make_copy_with_grads()
+            super().__init__(concentration=lb, rate=ub)
+
+    def Parameters(self):
+        """Return a list of parameters for the distribution"""
+        return [self.concentration, self.rate]
+
+    def make_copy_with_grads(self):
+        """
+        Return a copy  of the distribution, with parameters that require_grad
+        """
+        ps = [p.clone().detach().requires_grad_() for p in self.Parameters()]
+        return UniformContinuous(*ps, copy=True)
+
+    def log_prob(self, x):
+        return super().log_prob(x)
+
         
 class Bernoulli(dist.Bernoulli):
     
@@ -41,7 +69,7 @@ class Bernoulli(dist.Bernoulli):
             if type(probs) is float:
                 probs = torch.tensor(probs)
             logits = torch.log(probs/(1-probs)) ##will fail if probs = 0
-        #
+
         super().__init__(logits = logits)
     
     def Parameters(self):
@@ -78,6 +106,12 @@ class Categorical(dist.Categorical):
 
         self.logits = logits.clone().detach().requires_grad_()
         self._param = self.logits
+
+    def __repr__(self):
+        ret_str = ''
+        for i in range(len(self.logits)):
+            ret_str += str(self.logits[i])
+        return ret_str
     
     def Parameters(self):
         """Return a list of parameters for the distribution"""
@@ -161,13 +195,21 @@ if __name__ == '__main__':
     dg = d.make_copy_with_grads()
     
     #the function .Parameters() returns a list of parameters that you can pass to an optimizer
-    optimizer = torch.optim.Adam(dg.Parameters(), lr=1e-2)
+
+    optimizer = torch.optim.Adam([torch.tensor(0)], lr=1e-2)
+    print(optimizer.state_dict())
+    optimizer.param_groups[0]['params'] += dg.Parameters()
+    print(optimizer.state_dict())
+    print(dg.Parameters())
+
+    # optimizer = torch.optim.Adam(dg.Parameters(), lr=1e-2)
+
     
     #do the optimization. Here we're maximizing the log_prob of some data at 2.0
     #the scale should move to 2.0 as well,
     #furthermore, the scale should be constrained to the positive reals,
     #this last thing is taken care of by the new distributions defined above
-    for i in range(1000):
+    for i in range(4000):
         nlp = -dg.log_prob(data)
         nlp.backward()
         optimizer.step()
@@ -175,6 +217,7 @@ if __name__ == '__main__':
     
     #check the result is correct:
     print(dg.Parameters())
+    print(dg)
     
     
     #note: Parameters() returns a list of tensors that parametrize the distributions

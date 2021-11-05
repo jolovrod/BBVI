@@ -32,7 +32,6 @@ def eval(x, sigma, env=standard_env()):
     elif not isinstance(x, list): # constant 
         return torch.tensor(x), sigma
     op, *args = x       
-    # print("try", op, args)
     if op == 'if':             # conditional
         (test, conseq, alt) = args
         res, sigma = eval(test, sigma, env)

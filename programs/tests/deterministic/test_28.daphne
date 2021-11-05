@@ -1,3 +1,0 @@
-( defn my-fn [x y]
-(+ (* 2 x) y))
-(my-fn 5 9)

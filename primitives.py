@@ -1,5 +1,6 @@
 import torch
 import operator as op
+from math import sqrt
 
 # rest, nth, conj, cons as described in the book
 
@@ -9,6 +10,9 @@ Number = (torch.int32, torch.float64, torch.float32)     # A Scheme Number is im
 Atom   = (Symbol, Number) # A Scheme Atom is a Symbol or Number
 List   = torch.tensor             # A Scheme List is implemented as a Python list
 Expression  = (Atom, List)     # A Scheme expression is an Atom or List
+
+
+from distributions import Normal, Bernoulli, Categorical, Dirichlet, Gamma, UniformContinuous
 
 class Env(dict):
     "An environment: a dict of {'var': val} pairs, with an outer Env."
@@ -23,74 +27,28 @@ class Env(dict):
             print("except", var)
             raise
 
-class Normal(object):
-    def __init__(self, *x):
-        self.dist = torch.distributions.Normal(*torch.FloatTensor([*x]))
-        self.params = x
-
-    def sample(self):
-        return self.dist.sample()
-
-    def log_prob(self, c):
-        return self.dist.log_prob(c)
-
-class Beta(object):
-    def __init__(self, *x):
-        self.dist = torch.distributions.Beta(*torch.FloatTensor([*x]))
-
-    def sample(self):
-        return self.dist.sample()
-
-    def log_prob(self, c):
-        return self.dist.log_prob(c)
-
-class Gamma(object):
-    def __init__(self, *x):
-        self.dist = torch.distributions.Gamma(*torch.FloatTensor([*x]))
-
-    def sample(self):
-        return self.dist.sample()
-
-    def log_prob(self, c):
-        return self.dist.log_prob(c)
-
-# class Dirac(object):
-#     def __init__(self, x):
-#         self.value = x
+# class Beta(object):
+#     def __init__(self, *x):
+#         self.dist = torch.distributions.Beta(*torch.FloatTensor([*x]))
 
 #     def sample(self):
-#         return self.value
+#         return self.dist.sample()
 
 #     def log_prob(self, c):
-#         if c==self.value:
-#             return torch.tensor(1)
-#         else:
-#             return torch.tensor(0)
+#         return self.dist.log_prob(c)
 
 class Dirac(object):
-    # approximation to Dirac with Laplace
     def __init__(self, x):
-        self.dist = torch.distributions.Laplace(x, torch.tensor([0.25]))
+        self.value = x
 
     def sample(self):
-        return self.dist.sample()
+        return self.value
 
     def log_prob(self, c):
-        return self.dist.log_prob(c)
-
-class Bernoulli(object):
-    def __init__(self, x):
-        self.dist = torch.distributions.Bernoulli(x)
-        self.p = x
-
-    def sample(self):
-        return self.dist.sample()
-
-    def log_prob(self, c):
-        if c:
-            return torch.log(self.p)
+        if c==self.value:
+            return torch.tensor(1)
         else:
-            return torch.log(1 - self.p)
+            return torch.tensor(0)
 
 class Exponential(object):
     def __init__(self, *x):
@@ -105,26 +63,6 @@ class Exponential(object):
 class Uniform(object):
     def __init__(self, *x):
         self.dist = torch.distributions.Uniform(*torch.FloatTensor([*x]))
-
-    def sample(self):
-        return self.dist.sample()
-
-    def log_prob(self, c):
-        return self.dist.log_prob(c)
-
-class Dirichlet(object):
-    def __init__(self, x):
-        self.dist = torch.distributions.Dirichlet(x)
-
-    def sample(self):
-        return self.dist.sample()
-
-    def log_prob(self, c):
-        return self.dist.log_prob(c)
-
-class Discrete(object):
-    def __init__(self, x):
-        self.dist = torch.distributions.Categorical(probs = torch.FloatTensor(x))
 
     def sample(self):
         return self.dist.sample()
@@ -180,7 +118,13 @@ def first(x):
         return x[0]
     except:
         return x
+
+# def uniform_continuous(a,b):
+#     mu = torch.tensor(((a + b)/2).type(torch.float))
+#     sig = torch.tensor(sqrt((b-a)**2 / 12))
+#     return Normal(mu, sig)
     
+
 def standard_env() -> Env:
     "An environment with some Scheme standard procedures."
     env = Env()
@@ -224,10 +168,13 @@ def standard_env() -> Env:
         'hash-map': hash_map,
         'hash-map-graph': hash_map_graph,
         'normal': lambda *x: Normal(*x),
-        'beta': lambda *x: Beta(*x),
+        # 'uniform-continuous': lambda a, b: Normal((a + b)/2, (b-a)**2 / 12),
+        # 'uniform-continuous': uniform_continuous,
+        'uniform-continuous': lambda *x: UniformContinuous(*x),
+        # 'beta': lambda *x: Beta(*x),
         'exponential': lambda *x: Exponential(*x),
         'uniform': lambda *x: Uniform(*x),
-        'discrete': lambda *x: Discrete(*x),
+        'discrete': lambda *x: Categorical(*x),
         'dirichlet': lambda *x: Dirichlet(*x),
         'flip': lambda *x: Bernoulli(*x),
         'gamma': lambda *x: Gamma(*x),
